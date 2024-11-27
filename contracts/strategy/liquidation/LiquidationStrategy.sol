@@ -365,7 +365,8 @@ contract LiquidationStrategy is BaseStrategy, ReentrancyGuard, IFlashLendingCall
                 );
             }
 
-            if (balanceOfFXDBeforeSwap + fathomStablecoinReceivedV2 + fathomStablecoinReceivedV3 < amountNeededToPayDebt) {
+            // Balance of FXD in LiquidationStrategy after swaps should be enough to repay the debt
+            if (fathomStablecoin.balanceOf(address(this)) < amountNeededToPayDebt) {
                 revert NotEnoughToRepayDebt();
             }
 
