@@ -4,6 +4,8 @@ require("hardhat-deploy");
 require('./tasks/updateProfitUnlockTime.js');
 require('./tasks/update-liquidation-strategy.js');
 const fs = require("fs");
+// Load private key if present so compilation can run without a file
+const DEFAULT_PK = fs.existsSync("./privateKey") ? fs.readFileSync("./privateKey").toString().trim() : undefined;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -21,19 +23,19 @@ module.exports = {
         apothem: {
             url: `https://earpc.apothem.network`,
             // url: 'https://erpc.apothem.network',
-            accounts: [fs.readFileSync("./privateKey").toString()],
+            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
         },
         xdc: {
             url: `https://erpc.xdcrpc.com`,
-            accounts: [fs.readFileSync("./privateKey").toString()],
+            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
         },
         ganache: {
             url: `http://127.0.0.1:8545`,
-            accounts: [fs.readFileSync("./privateKey").toString()],
+            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
         },
         localhost: {
             url: `http://127.0.0.1:8545`,
-            accounts: [fs.readFileSync("./privateKey").toString()],
+            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
         },
         // hardhat: {
         //     accounts: {
