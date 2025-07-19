@@ -53,21 +53,31 @@ contract VaultStorage is AccessControl, ReentrancyGuard {
     uint256 public totalSupplyAmount;     // Total shares including locked
     uint256 public totalDebt;             // Assets deployed to strategies
     uint256 public totalIdle;             // Assets in vault
-    uint256 public depositLimit;          // Maximum deposits allowed
     
     // Strategy management
     mapping(address => StrategyParams) public strategies;
-    address[] public defaultQueue;        // Default withdrawal queue
+    address[] public defaultQueue;        // Simplified withdrawal queue
     
     // Fee and profit management
     uint256 public profitMaxUnlockTime;   // Profit unlock period
     uint256 public profitUnlockingRate;   // Rate of profit unlocking
     uint256 public fullProfitUnlockDate;  // When profits fully unlock
     
+    // Management fee configuration
+    ManagementFeeConfig public managementFeeConfig;
+    
     // External contracts
     address public accountant;            // Fee management
     address public factory;               // Vault factory
     ERC20 internal assetContract;         // Underlying asset
+}
+
+// Management Fee Configuration
+struct ManagementFeeConfig {
+    uint256 managementFeeRate;            // Annual fee rate in basis points
+    address managementFeeRecipient;       // Address to receive fee shares
+    uint256 lastManagementFeeCollection;  // Last collection timestamp
+    bool managementFeeEnabled;            // Whether fees are enabled
 }
 ```
 
@@ -102,7 +112,54 @@ function previewWithdraw(uint256 assets) external view returns (uint256 shares)
 function previewRedeem(uint256 shares) external view returns (uint256 assets)
 ```
 
-### 2. Multi-Strategy Management
+### 2. Management Fee System
+
+The vault implements an annual management fee system that charges fees as vault share tokens, collected regularly based on total assets under management.
+
+**Management Fee Features:**
+- **Annual Percentage Fees**: Configurable annual rate (e.g., 2% = 200 basis points)
+- **Share-Based Collection**: Fees collected by minting vault shares to recipient
+- **Time-Prorated**: Fees calculated based on elapsed time since last collection
+- **Admin Controlled**: Only DEFAULT_ADMIN_ROLE can configure fees
+- **Automatic Integration**: Fees collected during strategy reports
+- **Manual Collection**: Can be triggered independently via `collectManagementFees()`
+
+**Management Fee Functions:**
+```solidity
+// Configure management fees (admin only)
+function setManagementFeeConfig(
+    uint256 _managementFeeRate,      // Annual rate in basis points (e.g., 200 = 2%)
+    address _managementFeeRecipient, // Address to receive fee shares
+    bool _enabled                    // Whether to enable fees
+) external onlyRole(DEFAULT_ADMIN_ROLE)
+
+// Collect management fees manually
+function collectManagementFees() external returns (uint256 feesInAssets, uint256 feesInShares)
+
+// Get current management fee configuration
+function getManagementFeeConfig() external view returns (
+    uint256 managementFeeRate,
+    address managementFeeRecipient,
+    uint256 lastManagementFeeCollection,
+    bool managementFeeEnabled
+)
+```
+
+**Example Fee Configuration:**
+```javascript
+// Set 2% annual management fee
+const feeRate = 200; // 2% in basis points
+const feeRecipient = "0x..."; // Treasury address
+const enabled = true;
+
+await vault.setManagementFeeConfig(feeRate, feeRecipient, enabled);
+
+// Fees will be automatically collected during strategy reports
+// or can be manually collected
+const { feesInAssets, feesInShares } = await vault.collectManagementFees();
+```
+
+### 3. Multi-Strategy Management
 
 The vault can allocate funds across multiple strategies to maximize yield while managing risk through diversification.
 
@@ -133,7 +190,7 @@ struct StrategyParams {
 }
 ```
 
-### 3. Profit Management and Distribution
+### 4. Profit Management and Distribution
 
 The vault implements a sophisticated profit unlocking mechanism that prevents manipulation while ensuring fair distribution.
 
@@ -145,11 +202,11 @@ The vault implements a sophisticated profit unlocking mechanism that prevents ma
 
 **Process Flow:**
 ```
-Strategy Reports Profit → Fees Calculated → Remaining Profit Locked → 
+Strategy Reports Profit → Management Fees Calculated → Remaining Profit Locked → 
 Linear Unlock Over Time → Share Price Appreciation
 ```
 
-### 4. Comprehensive Access Control
+### 5. Comprehensive Access Control
 
 Role-based access control ensures secure operations while enabling flexible management.
 
@@ -168,6 +225,7 @@ bytes32 public constant DEBT_PURCHASER = keccak256("DEBT_PURCHASER");        // 
 | Update Debt | ✓ | ✓ | ✗ | ✗ |
 | Process Report | ✓ | ✗ | ✓ | ✗ |
 | Buy Debt | ✓ | ✗ | ✗ | ✓ |
+| Management Fees | ✓ | ✗ | ✗ | ✗ |
 | Emergency Shutdown | ✓ | ✗ | ✗ | ✗ |
 
 ## Deposit and Withdrawal System
@@ -175,15 +233,16 @@ bytes32 public constant DEBT_PURCHASER = keccak256("DEBT_PURCHASER");        // 
 ### Deposit Process
 
 ```
-User Deposits Assets → Deposit Limit Check → Module Validation → 
-Mint Shares → Update Idle Balance → Deploy to Strategies (if configured)
+User Deposits Assets → Module Validation → Mint Shares → 
+Update Idle Balance → Deploy to Strategies (if configured)
 ```
 
 **Deposit Validation:**
-1. **Deposit Limits**: Global and user-specific limits
-2. **Module Checks**: KYC or other compliance modules  
-3. **Minimum Amounts**: Configurable minimum deposit amounts
-4. **Vault Status**: Vault must not be shutdown
+1. **Module Checks**: Deposit limit modules (KYC, compliance, etc.)
+2. **Vault Status**: Vault must not be shutdown
+3. **Asset Validation**: Correct asset type and amount
+
+**Note**: Vault-level deposit limits have been removed in favor of flexible deposit limit modules that can implement custom logic including KYC, compliance checks, and dynamic limits.
 
 **Example Deposit:**
 ```javascript
@@ -472,7 +531,7 @@ contract VaultStorage is AccessControl, ReentrancyGuard {
 
 ### Deposit Limit Module
 
-Configurable module for advanced deposit controls:
+The vault delegates all deposit limit enforcement to external modules, providing maximum flexibility for different use cases. The vault itself does not impose any built-in deposit limits.
 
 ```solidity
 interface IDepositLimitModule {
@@ -489,7 +548,9 @@ function _checkDepositLimit(address receiver, uint256 assets) internal view {
 }
 ```
 
-**KYC Module Example:**
+**Module Examples:**
+
+**KYC Module:**
 ```solidity
 contract KYCDepositLimitModule is IDepositLimitModule {
     mapping(address => bool) public kycPassed;
@@ -497,6 +558,35 @@ contract KYCDepositLimitModule is IDepositLimitModule {
     function availableDepositLimit(address receiver) 
         external view override returns (uint256) {
         return kycPassed[receiver] ? type(uint256).max : 0;
+    }
+}
+```
+
+**Tiered Limit Module:**
+```solidity
+contract TieredDepositLimitModule is IDepositLimitModule {
+    mapping(address => uint256) public userTier;
+    mapping(uint256 => uint256) public tierLimits;
+    
+    function availableDepositLimit(address receiver) 
+        external view override returns (uint256) {
+        uint256 tier = userTier[receiver];
+        return tierLimits[tier];
+    }
+}
+```
+
+**Time-Based Limit Module:**
+```solidity
+contract TimeBasedDepositLimitModule is IDepositLimitModule {
+    mapping(address => mapping(uint256 => uint256)) public dailyDeposited;
+    uint256 public dailyLimit = 10000e18; // 10,000 tokens per day
+    
+    function availableDepositLimit(address receiver) 
+        external view override returns (uint256) {
+        uint256 today = block.timestamp / 86400;
+        uint256 used = dailyDeposited[receiver][today];
+        return dailyLimit > used ? dailyLimit - used : 0;
     }
 }
 ```

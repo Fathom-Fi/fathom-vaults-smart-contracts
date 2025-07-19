@@ -14,10 +14,9 @@ module.exports = {
         settings: {
             optimizer: {
                 enabled: true,
-                runs: 200,
-                details: { yul: true },
+                runs: 1,
             },
-            viaIR: true,
+            viaIR: true, // Re-enabled to fix "stack too deep" errors
         },
     },
     networks: {

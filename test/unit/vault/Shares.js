@@ -85,8 +85,8 @@ describe("Vault Contract", function () {
         const { vault, otherAccount } = await loadFixture(deployVault);
         const amount = 1000;
 
-        await expect(vault.connect(otherAccount).deposit(amount, vault.target)).to.be.revertedWithCustomError(vault, "ExceedDepositLimit");
-        await expect(vault.connect(otherAccount).deposit(amount, ethers.ZeroAddress)).to.be.revertedWithCustomError(vault, "ExceedDepositLimit");
+        await expect(vault.connect(otherAccount).deposit(amount, vault.target)).to.be.reverted;
+        await expect(vault.connect(otherAccount).deposit(amount, ethers.ZeroAddress)).to.be.reverted;
     });
 
     it("should revert deposit with zero funds", async function () {
@@ -96,13 +96,11 @@ describe("Vault Contract", function () {
         await expect(vault.connect(otherAccount).deposit(amount, otherAccount.address)).to.be.revertedWithCustomError(vault, "ZeroValue");
     });
 
-    it("should deposit balance within deposit limit", async function () {
+    it("should deposit balance successfully", async function () {
         const { vault, owner, asset } = await loadFixture(deployVault);
         const amount = 1000;
         await asset.mint(owner.address, amount);
         await asset.approve(vault.target, amount);
-    
-        await vault.connect(owner).setDepositLimit(amount);
     
         await expect(vault.connect(owner).deposit(amount, owner.address))
             .to.emit(vault, 'Deposit')
@@ -115,38 +113,12 @@ describe("Vault Contract", function () {
         // Assuming asset is the ERC20 token contract
         expect(await asset.balanceOf(owner.address)).to.equal(0);
     });
-
-    it("should revert when deposit exceeds deposit limit", async function () {
-        const { vault, owner, asset } = await loadFixture(deployVault);
-        const amount = 1000;
-        await asset.mint(owner.address, amount);
-        await asset.approve(vault.target, amount);
-
-        await vault.setDepositLimit(amount - 1);
-    
-        await expect(vault.connect(owner).deposit(amount, owner.address))
-            .to.be.revertedWithCustomError(vault, "ExceedDepositLimit");
-    });
-
-    it("should revert when deposit all exceeds deposit limit", async function () {
-        const { vault, owner, asset } = await loadFixture(deployVault);
-        const amount = 1000;
-        const depositLimit = amount / 2;
-    
-        await vault.setDepositLimit(depositLimit);
-        await asset.approve(vault.target, amount);
-    
-        await expect(vault.connect(owner).deposit(ethers.MaxUint256, owner.address))
-            .to.be.revertedWithCustomError(vault, "ExceedDepositLimit");
-    });
     
     it("should deposit to delegate", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
         await asset.mint(owner.address, amount);
         await asset.approve(vault.target, amount);
-
-        await vault.setDepositLimit(amount);
     
         await expect(vault.connect(owner).deposit(amount, otherAccount))
             .to.emit(vault, 'Deposit')
@@ -164,10 +136,8 @@ describe("Vault Contract", function () {
         const { vault, owner } = await loadFixture(deployVault);
         const shares = 100;
     
-        await expect(vault.connect(owner).mint(shares, vault.target))
-            .to.be.revertedWithCustomError(vault, "ExceedDepositLimit");
-        await expect(vault.connect(owner).mint(shares, ethers.ZeroAddress))
-            .to.be.revertedWithCustomError(vault, "ExceedDepositLimit");
+        await expect(vault.connect(owner).mint(shares, vault.target)).to.be.reverted;
+        await expect(vault.connect(owner).mint(shares, ethers.ZeroAddress)).to.be.reverted;
     });
     
     it("should revert mint with zero funds", async function () {
@@ -178,12 +148,11 @@ describe("Vault Contract", function () {
             .to.be.revertedWithCustomError(vault, "ZeroValue");
     });
 
-    it("should mint within deposit limit", async function () {
+    it("should mint successfully", async function () {
         const { vault, owner, asset } = await loadFixture(deployVault);
         const amount = 1000;
         await asset.mint(owner.address, amount);    
         await asset.approve(vault.target, amount);
-        await vault.setDepositLimit(amount);
     
         await expect(vault.connect(owner).mint(amount, owner.address))
             .to.emit(vault, 'Deposit')
@@ -195,22 +164,11 @@ describe("Vault Contract", function () {
         expect(await asset.balanceOf(owner.address)).to.equal(0);
     });
     
-    it("should revert mint when exceeding deposit limit", async function () {
-        const { vault, owner } = await loadFixture(deployVault);
-        const amount = 1000;
-
-        await vault.setDepositLimit(amount - 1);
-    
-        await expect(vault.connect(owner).mint(amount, owner.address))
-            .to.be.revertedWithCustomError(vault, "ExceedDepositLimit");
-    });
-    
     it("should mint to delegate", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
         await asset.mint(owner.address, amount);    
         await asset.approve(vault.target, amount);
-        await vault.setDepositLimit(amount);
     
         await expect(vault.connect(owner).mint(amount, otherAccount.address))
             .to.emit(vault, 'Deposit')
@@ -227,7 +185,6 @@ describe("Vault Contract", function () {
     it("should withdraw successfully", async function () {
         const { vault, owner, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
 
         await userDeposit(owner, vault, asset, amount);
     
@@ -245,7 +202,6 @@ describe("Vault Contract", function () {
         const { vault, owner, asset } = await loadFixture(deployVault);
         const amount = 1000;
         const shares = amount + 1;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount);
     
@@ -264,7 +220,6 @@ describe("Vault Contract", function () {
     it("should withdraw to delegate", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount);
     
@@ -283,7 +238,6 @@ describe("Vault Contract", function () {
     it("should withdraw with delegation and sufficient allowance", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount,);
     
@@ -302,7 +256,6 @@ describe("Vault Contract", function () {
     it("should revert on withdraw with delegation and insufficient allowance", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount);
     
@@ -313,7 +266,6 @@ describe("Vault Contract", function () {
     it("should redeem successfully", async function () {
         const { vault, owner, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount);
     
@@ -329,7 +281,6 @@ describe("Vault Contract", function () {
     it("should revert on redeem with insufficient shares", async function () {
         const { vault, owner, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
         const redemptionAmount = amount + 1;
     
         await userDeposit(owner, vault, asset, amount);
@@ -345,11 +296,10 @@ describe("Vault Contract", function () {
         await expect(vault.connect(owner).redeem(amount, owner.address, owner.address, 0, []))
             .to.be.revertedWithCustomError(vault, "ZeroValue");
     });
-
+    
     it("should redeem to delegate", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount);
     
@@ -364,17 +314,15 @@ describe("Vault Contract", function () {
         // otherAccount has tokens
         expect(await asset.balanceOf(otherAccount.address)).to.equal(amount);
     });
-
+    
     it("should redeem with delegation and sufficient allowance", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount);
+    
         await vault.connect(owner).approve(otherAccount.address, amount);
     
-        // withdraw as otherAccount to owner
-        vault.connect(owner).approve(otherAccount.address, amount);
         await expect(vault.connect(otherAccount).redeem(amount, owner.address, owner.address, 0, []))
             .to.emit(vault, 'Withdraw')
             .withArgs(otherAccount.address, owner.address, owner.address, amount, amount);
@@ -388,25 +336,11 @@ describe("Vault Contract", function () {
     it("should revert on redeem with delegation and insufficient allowance", async function () {
         const { vault, owner, otherAccount, asset } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
     
         await userDeposit(owner, vault, asset, amount);
     
         await expect(vault.connect(otherAccount).redeem(amount, owner.address, owner.address, 0, []))
             .to.be.revertedWithCustomError(vault, "ERC20InsufficientAllowance");
-    });
-    
-    it("should set deposit limit correctly", async function () {
-        const { vault, owner, otherAccount } = await loadFixture(deployVault);
-        const depositLimit = 1000;
-    
-        const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000";
-        await vault.connect(owner).grantRole(DEFAULT_ADMIN_ROLE, otherAccount.address);
-        await expect(vault.connect(otherAccount).setDepositLimit(depositLimit))
-            .to.emit(vault, 'UpdatedDepositLimit')
-            .withArgs(depositLimit);
-    
-        expect(await vault.depositLimit()).to.equal(depositLimit);
     });
 
     // Not working due to delegate call issues with hardhat
@@ -414,7 +348,6 @@ describe("Vault Contract", function () {
     it("should mint shares with zero total supply and positive assets", async function () {
         const { vault, owner, asset, factory } = await loadFixture(deployVault); // Replace initialSetUp with your setup function
         const amount = 1000;
-        await vault.setDepositLimit(amount);
         const maxDebt = amount;
         const debt = amount / 10;
         const firstProfit = amount / 10;

@@ -18,6 +18,7 @@ import "../../factory/interfaces/IFactory.sol";
 import "../../strategy/interfaces/IStrategy.sol";
 import { VaultLogic } from "../libs/VaultLogic.sol";
 
+
 /// @title Fathom Vault
 /// @notice The Fathom Vault is designed as a non-opinionated system to distribute funds of
 /// depositors for a specific `asset` into different opportunities (aka Strategies)
@@ -74,80 +75,26 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
         emit UpdatedAccountant(newAccountant);
     }
 
-    /// @notice Set the new default queue array.
-    /// @dev Will check each strategy to make sure it is active.
-    /// @param newDefaultQueue The new default queue array.
-    function setDefaultQueue(address[] calldata newDefaultQueue) external override onlyRole(STRATEGY_MANAGER) {
-        uint256 length = newDefaultQueue.length;
-        if (length > MAX_QUEUE) {
+    /// @notice Add strategy to the queue.
+    /// @param strategy The strategy to add.
+    function addStrategyToQueue(address strategy) external onlyRole(STRATEGY_MANAGER) {
+        if (strategies[strategy].activation == 0) {
+            revert InactiveStrategy(strategy);
+        }
+        if (defaultQueue.length >= MAX_QUEUE) {
             revert QueueTooLong();
         }
-
-        // Make sure every strategy in the new queue is active and not duplicated.
-        for (uint256 i = 0; i < length; i++) {
-            address strategy = newDefaultQueue[i];
-
-            // Check for active strategy.
-            if (strategies[strategy].activation == 0) {
-                revert InactiveStrategy(strategy);
-            }
-
-            // Check for duplicates by comparing with the rest of the queue.
-            // Introduces a O(n^2) complexity but the queue is expected to be small.
-            for (uint256 j = i + 1; j < length; j++) {
-                if (strategy == newDefaultQueue[j]) {
-                    revert DuplicateStrategy(strategy);
-                }
-            }
-        }
-
-        // Save the new queue.
-        defaultQueue = newDefaultQueue;
-        emit UpdatedDefaultQueue(newDefaultQueue);
+        defaultQueue.push(strategy);
+        emit UpdatedDefaultQueue(defaultQueue);
     }
 
-    /// @notice Set a new value for `use_default_queue`.
-    /// @dev If set `True` the default queue will always be
-    /// used no matter whats passed in.
-    /// @param _useDefaultQueue new value.
-    function setUseDefaultQueue(bool _useDefaultQueue) external override onlyRole(STRATEGY_MANAGER) {
-        useDefaultQueue = _useDefaultQueue;
-        emit UpdatedUseDefaultQueue(_useDefaultQueue);
-    }
 
-    /// @notice Set the new deposit limit.
-    /// @param _depositLimit The new deposit limit.
-    // solhint-disable-next-line code-complexity
-    function setDepositLimit(uint256 _depositLimit) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (shutdown == true) {
-            revert InactiveVault();
-        }
-        if (depositLimitModule != address(0)) {
-            revert UsingModule();
-        }
-        if (_depositLimit == 0) {
-            revert ZeroValue();
-        }
-
-        depositLimit = _depositLimit;
-        emit UpdatedDepositLimit(_depositLimit);
-    }
-
-    function setMinUserDeposit(uint256 _minUserDeposit) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        minUserDeposit = _minUserDeposit;
-        emit UpdatedMinUserDeposit(_minUserDeposit);
-    }
 
     /// @notice Set a contract to handle the deposit limit.
-    /// @dev The default `depositLimit` will need to be set to
-    /// max uint256 since the module will override it.
     /// @param _depositLimitModule Address of the module.
     function setDepositLimitModule(address _depositLimitModule) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         if (shutdown == true) {
             revert InactiveVault();
-        }
-        if (depositLimit != type(uint256).max) {
-            revert UsingDepositLimit();
         }
         depositLimitModule = _depositLimitModule;
         emit UpdatedDepositLimitModule(_depositLimitModule);
@@ -194,6 +141,31 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
         emit UpdatedProfitMaxUnlockTime(_newProfitMaxUnlockTime);
     }
 
+    /// @notice Set the management fee configuration.
+    /// @dev Can only be called by DEFAULT_ADMIN_ROLE.
+    /// @param _managementFeeRate Annual management fee rate in basis points (e.g., 200 = 2%).
+    /// @param _managementFeeRecipient Address to receive management fees.
+    /// @param _enabled Whether management fees are enabled.
+    function setManagementFeeConfig(
+        uint256 _managementFeeRate, 
+        address _managementFeeRecipient, 
+        bool _enabled
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        VaultLogic.validateManagementFeeConfig(_managementFeeRate, _managementFeeRecipient, _enabled);
+
+        // Collect any pending fees before changing configuration
+        if (managementFeeConfig.managementFeeEnabled) {
+            _collectManagementFees();
+        }
+
+        managementFeeConfig.managementFeeRate = _managementFeeRate;
+        managementFeeConfig.managementFeeRecipient = _managementFeeRecipient;
+        managementFeeConfig.managementFeeEnabled = _enabled;
+        managementFeeConfig.lastManagementFeeCollection = block.timestamp;
+
+        emit ManagementFeeConfigUpdated(_managementFeeRate, _managementFeeRecipient, _enabled);
+    }
+
     /// @notice Add a new strategy.
     /// @param newStrategy The new strategy to add.
     function addStrategy(address newStrategy) external override onlyRole(STRATEGY_MANAGER) {
@@ -210,12 +182,6 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
 
         // Add the new strategy to the mapping.
         strategies[newStrategy] = StrategyParams({ activation: block.timestamp, lastReport: block.timestamp, currentDebt: 0, maxDebt: 0 });
-
-        // If the default queue has space, add the strategy.
-        uint256 defaultQueueLength = defaultQueue.length;
-        if (defaultQueueLength < MAX_QUEUE) {
-            defaultQueue.push(newStrategy);
-        }
 
         emit StrategyChanged(newStrategy, StrategyChangeType.ADDED);
     }
@@ -252,8 +218,6 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
             emit UpdatedDepositLimitModule(address(0));
         }
 
-        depositLimit = 0;
-        emit UpdatedDepositLimit(0);
         emit Shutdown();
     }
 
@@ -291,6 +255,24 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
             accountant,
             factory
         );
+
+        // Calculate and include management fees in the report
+        if (managementFeeConfig.managementFeeEnabled) {
+            (uint256 feesInAssets, uint256 feesInShares) = VaultLogic.calculateManagementFees(
+                managementFeeConfig,
+                currentTotalAssets,
+                currentTotalSupply
+            );
+            
+            if (feesInShares > 0) {
+                // Add management fees to the share management
+                report.shares.managementFeesShares = feesInShares;
+                // Update the last collection timestamp
+                managementFeeConfig.lastManagementFeeCollection = block.timestamp;
+                // Emit management fee collection event
+                emit ManagementFeesCollected(feesInAssets, feesInShares, managementFeeConfig.managementFeeRecipient);
+            }
+        }
 
         _handleShareBurnsAndIssues(report.gain, report.loss, report.shares, report.assessmentFees, strategy);
 
@@ -703,14 +685,35 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
         return VaultLogic.assessShareOfUnrealisedLosses(strategy, assetsNeeded, strategyCurrentDebt);
     }
 
-    /// @notice Get default strategy queue length.
-    function getDefaultQueueLength() external view override returns (uint256 length) {
-        return defaultQueue.length;
+
+
+    /// @notice Collect management fees and mint shares to the fee recipient.
+    /// @dev Can be called by anyone to trigger fee collection.
+    /// @return The amount of shares minted as management fees.
+    function collectManagementFees() external override returns (uint256) {
+        if (!managementFeeConfig.managementFeeEnabled) {
+            revert ManagementFeesNotEnabled();
+        }
+        return _collectManagementFees();
     }
 
-    /// @notice Get default strategy queue.
-    function getDefaultQueue() external view override returns (address[] memory) {
-        return defaultQueue;
+    /// @notice Get the current management fee configuration.
+    /// @return managementFeeRate The annual management fee rate in basis points.
+    /// @return managementFeeRecipient The address receiving management fees.
+    /// @return lastCollection The timestamp of the last fee collection.
+    /// @return enabled Whether management fees are enabled.
+    function getManagementFeeConfig() external view override returns (
+        uint256 managementFeeRate, 
+        address managementFeeRecipient, 
+        uint256 lastCollection, 
+        bool enabled
+    ) {
+        return (
+            managementFeeConfig.managementFeeRate,
+            managementFeeConfig.managementFeeRecipient,
+            managementFeeConfig.lastManagementFeeCollection,
+            managementFeeConfig.managementFeeEnabled
+        );
     }
 
     /// @notice Get the number of decimals of the asset/share.
@@ -864,6 +867,10 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
 
         if (shares.protocolFeesShares > 0) {
             _issueShares(shares.protocolFeesShares, fees.protocolFeeRecipient);
+        }
+
+        if (shares.managementFeesShares > 0) {
+            _issueShares(shares.managementFeesShares, managementFeeConfig.managementFeeRecipient);
         }
 
         _manageUnlockingOfShares(_previouslyLockedShares, _newlyLockedShares);
@@ -1025,22 +1032,11 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
     /// issue the corresponding shares to the `recipient` and update all needed
     /// vault accounting.
     function _deposit(address sender, address recipient, uint256 assets) internal returns (uint256) {
-        uint256 minDepositAmount = minUserDeposit;
-        uint256 depositedAssets = VaultLogic.convertToAssets(sharesBalanceOf[recipient], _totalSupply(), _totalAssets(), Rounding.ROUND_DOWN);
-
-        if (depositedAssets + assets < minDepositAmount) {
-            revert MinDepositNotReached();
-        }
-
-        uint256 _maxDepositAmount = _maxDeposit(recipient);
         if (shutdown == true) {
             revert InactiveVault();
         }
         if (assets == 0) {
             revert ZeroValue();
-        }
-        if (assets > _maxDepositAmount) {
-            revert ExceedDepositLimit(_maxDepositAmount);
         }
 
         // Case Normal Tokens
@@ -1067,7 +1063,6 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
     /// transfer the amount of `asset` to the vault, and update all needed vault
     /// accounting.
     function _mint(address sender, address recipient, uint256 shares) internal returns (uint256) {
-        uint256 _maxDepositAmount = _maxDeposit(recipient);
         if (shutdown == true) {
             revert InactiveVault();
         }
@@ -1076,9 +1071,6 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
 
         if (assets == 0) {
             revert ZeroValue();
-        }
-        if (assets > _maxDepositAmount) {
-            revert ExceedDepositLimit(_maxDepositAmount);
         }
 
         // Transfer the tokens to the vault first.
@@ -1117,16 +1109,10 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
             revert ExceedWithdrawLimit(maxWithdrawAmount);
         }
 
-        uint256 minDepositAmount = minUserDeposit;
-        uint256 depositedAssets = VaultLogic.convertToAssets(sharesBalanceOf[owner], _totalSupply(), _totalAssets(), Rounding.ROUND_DOWN);
-        uint256 expectedLeftover = depositedAssets - assets;
 
-        if (expectedLeftover > 0 && expectedLeftover < minDepositAmount) {
-            revert MinDepositNotReached();
-        }
 
         _handleAllowance(owner, sender, sharesToBurn);
-        (uint256 requestedAssets, uint256 currTotalIdle) = _withdrawAssets(assets, _strategies);
+        (uint256 requestedAssets, uint256 currTotalIdle) = _withdrawAssets(assets);
         _finalizeRedeem(receiver, owner, sharesToBurn, assets, requestedAssets, currTotalIdle, maxLoss);
 
         emit Withdraw(sender, receiver, owner, requestedAssets, sharesToBurn);
@@ -1142,7 +1128,7 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
 
     /// Withdraws assets from strategies as needed and handles unrealized losses.
     // solhint-disable-next-line function-max-lines,code-complexity
-    function _withdrawAssets(uint256 assets, address[] memory _strategies) internal returns (uint256, uint256) {
+    function _withdrawAssets(uint256 assets) internal returns (uint256, uint256) {
         // Initialize the state struct
         WithdrawalState memory state = WithdrawalState({
             requestedAssets: assets,
@@ -1156,10 +1142,8 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
         // If there are not enough assets in the Vault contract, we try to free
         // funds from strategies.
         if (state.requestedAssets > state.currTotalIdle) {
-            // Cache the default queue.
-            // If a custom queue was passed, and we don't force the default queue.
-            // Use the custom queue.
-            address[] memory currentStrategies = _strategies.length != 0 && !useDefaultQueue ? _strategies : defaultQueue;
+            // Use the default queue for withdrawals.
+            address[] memory currentStrategies = defaultQueue;
 
             // Withdraw from strategies only what idle doesn't cover.
             // `assetsNeeded` is the total amount we need to fill the request.
@@ -1340,19 +1324,12 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
         // Set strategy params all back to 0 (WARNING: it can be re-added).
         strategies[strategy] = StrategyParams({ activation: 0, lastReport: 0, currentDebt: 0, maxDebt: 0 });
 
-        // Remove strategy if it is in the default queue.
-        uint256 defaultQueueLength = defaultQueue.length;
-        if (defaultQueueLength > 0) {
-            for (uint256 i = 0; i < defaultQueueLength; i++) {
-                if (defaultQueue[i] == strategy) {
-                    // Shift all elements down one position from the point of removal
-                    for (uint256 j = i; j < defaultQueueLength - 1; j++) {
-                        defaultQueue[j] = defaultQueue[j + 1];
-                    }
-                    // Remove the last element by reducing the array length
-                    defaultQueue.pop();
-                    break; // Exit the loop as we've found and removed the strategy
-                }
+        // Remove strategy from queue using swap and pop for O(1) removal
+        for (uint256 i = 0; i < defaultQueue.length; i++) {
+            if (defaultQueue[i] == strategy) {
+                defaultQueue[i] = defaultQueue[defaultQueue.length - 1];
+                defaultQueue.pop();
+                break;
             }
         }
 
@@ -1390,10 +1367,8 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
             uint256 have = currentIdle;
             uint256 loss;
 
-            // Cache the default queue.
-            // If a custom queue was passed, and we don't force the default queue.
-            // Use the custom queue.
-            address[] memory currentStrategies = _strategies.length != 0 && !useDefaultQueue ? _strategies : defaultQueue;
+            // Use the default queue for max withdraw calculations.
+            address[] memory currentStrategies = defaultQueue;
 
             for (uint256 i = 0; i < currentStrategies.length; i++) {
                 address strategy = currentStrategies[i];
@@ -1496,12 +1471,32 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
             return IDepositLimitModule(currentDepositLimitModule).availableDepositLimit(receiver);
         }
 
-        // Else use the standard flow.
+        // No deposit limit module - unlimited deposits
+        return type(uint256).max;
+    }
+
+    /// @notice Internal function to collect management fees.
+    /// @return The amount of shares minted as management fees.
+    function _collectManagementFees() internal returns (uint256) {
         uint256 currentTotalAssets = _totalAssets();
-        if (currentTotalAssets >= depositLimit) {
-            return 0;
+        uint256 currentTotalSupply = _totalSupply();
+
+        (uint256 feesInAssets, uint256 feesInShares) = VaultLogic.calculateManagementFees(
+            managementFeeConfig,
+            currentTotalAssets,
+            currentTotalSupply
+        );
+
+        if (feesInShares > 0) {
+            // Issue management fee shares to the recipient
+            _issueShares(feesInShares, managementFeeConfig.managementFeeRecipient);
+            
+            // Update the last collection timestamp
+            managementFeeConfig.lastManagementFeeCollection = block.timestamp;
+            
+            emit ManagementFeesCollected(feesInAssets, feesInShares, managementFeeConfig.managementFeeRecipient);
         }
 
-        return depositLimit - currentTotalAssets;
+        return feesInShares;
     }
 }
