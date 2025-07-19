@@ -36,7 +36,7 @@ contract MockPool {
         // Mock implementation
     }
 
-    function withdraw(address asset, uint256 amount, address to) external returns (uint256) {
+    function withdraw(address /*asset*/, uint256 amount, address /*to*/) external returns (uint256) {
         // Mock implementation
         return amount;
     }

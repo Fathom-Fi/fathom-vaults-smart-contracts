@@ -9,13 +9,7 @@ import { IERC4626 } from "../../common/interfaces/IERC4626.sol";
 interface IVault is IERC4626 {
     function setAccountant(address newAccountant) external;
 
-    function setDefaultQueue(address[] calldata newDefaultQueue) external;
-
-    function setUseDefaultQueue(bool useDefaultQueue) external;
-
-    function setDepositLimit(uint256 depositLimit) external;
-
-    function setMinUserDeposit(uint256 minUserDeposit) external;
+    function addStrategyToQueue(address strategy) external;
 
     function setDepositLimitModule(address newDepositLimitModule) external;
 
@@ -95,9 +89,19 @@ interface IVault is IERC4626 {
 
     function assessShareOfUnrealisedLosses(address strategy, uint256 assetsNeeded) external view returns (uint256);
 
-    function getDefaultQueueLength() external view returns (uint256);
 
-    function getDefaultQueue() external view returns (address[] memory);
+
+    // Management fee functions
+    function setManagementFeeConfig(uint256 managementFeeRate, address managementFeeRecipient, bool enabled) external;
+
+    function collectManagementFees() external returns (uint256);
+
+    function getManagementFeeConfig() external view returns (
+        uint256 managementFeeRate, 
+        address managementFeeRecipient, 
+        uint256 lastCollection, 
+        bool enabled
+    );
 
     function apiVersion() external view returns (string memory);
 

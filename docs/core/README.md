@@ -21,7 +21,9 @@ The core vault contract that manages user deposits, strategy allocation, and yie
 **Key Features:**
 - ERC-4626 compliant vault implementation
 - Multi-strategy allocation and management
+- Annual management fee system (configurable, share-based)
 - Profit unlocking and distribution mechanisms
+- Module-based deposit limits (no vault-level limits)
 - Comprehensive access controls and safety features
 
 ### 📊 [Accountant](./Accountant.md)
@@ -82,9 +84,10 @@ The fee management system that handles performance fees, protocol fees, and prof
 3. **Vault** distributes net yields to users through share appreciation
 
 ### 4. Fee Distribution
-1. **Accountant** collects performance fees from profitable strategies
-2. **Factory** receives protocol fees from **Accountant** fees
-3. Fee recipients can claim accumulated fees
+1. **Vault** automatically collects management fees as vault shares
+2. **Accountant** collects performance fees from profitable strategies
+3. **Factory** receives protocol fees from **Accountant** fees
+4. Fee recipients can claim accumulated fees
 
 ## Key Benefits
 
@@ -92,7 +95,8 @@ The fee management system that handles performance fees, protocol fees, and prof
 - **Simplified DeFi Access**: Single interface to multiple yield strategies
 - **Risk Diversification**: Automated allocation across strategies
 - **Professional Management**: Expert strategy management and risk controls
-- **Transparent Fees**: Clear performance and protocol fee structure
+- **Transparent Fees**: Clear management, performance, and protocol fee structure
+- **Flexible Limits**: Module-based deposit controls for compliance and risk management
 
 ### for Strategy Managers
 - **Standardized Interface**: Consistent vault integration patterns
@@ -115,9 +119,9 @@ The fee management system that handles performance fees, protocol fees, and prof
 - **Upgradeable Design**: Safe upgrade paths for security improvements
 
 ### Economic Security
-- **Deposit Limits**: Configurable limits to prevent over-concentration
+- **Flexible Deposit Limits**: Module-based limits for customizable risk controls
 - **Loss Mitigation**: Strategies implement loss protection mechanisms
-- **Fee Validation**: Comprehensive validation of all fee calculations
+- **Fee Validation**: Comprehensive validation of management and performance fees
 - **Profit Unlocking**: Time-based profit distribution prevents manipulation
 
 ## Getting Started

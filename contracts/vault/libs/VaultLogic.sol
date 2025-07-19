@@ -4,7 +4,7 @@
 pragma solidity 0.8.19;
 
 import "../VaultErrors.sol";
-import { FeeAssessment, ReportInfo, Rounding, ShareManagement } from "../VaultStructs.sol";
+import { FeeAssessment, ReportInfo, Rounding, ShareManagement, ManagementFeeConfig } from "../VaultStructs.sol";
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -310,5 +310,53 @@ library VaultLogic {
         }
 
         return shares;
+    }
+
+    /// @notice Calculate management fees based on time elapsed and total assets
+    /// @param config The management fee configuration
+    /// @param totalAssets The current total assets in the vault
+    /// @param totalSupply The current total supply of shares
+    /// @return feesInAssets The amount of fees in asset terms
+    /// @return feesInShares The amount of fees in shares to mint
+    function calculateManagementFees(
+        ManagementFeeConfig memory config,
+        uint256 totalAssets,
+        uint256 totalSupply
+    ) external view returns (uint256 feesInAssets, uint256 feesInShares) {
+        if (!config.managementFeeEnabled || config.managementFeeRate == 0 || totalAssets == 0) {
+            return (0, 0);
+        }
+
+        uint256 timeElapsed = block.timestamp - config.lastManagementFeeCollection;
+        if (timeElapsed == 0) {
+            return (0, 0);
+        }
+
+        // Calculate annual fee amount: totalAssets * managementFeeRate / MAX_BPS
+        // Then pro-rate for time elapsed: * timeElapsed / 365.25 days
+        uint256 annualFeeAmount = (totalAssets * config.managementFeeRate) / MAX_BPS;
+        feesInAssets = (annualFeeAmount * timeElapsed) / 365.25 days;
+
+        if (feesInAssets > 0 && totalSupply > 0) {
+            // Convert fee amount to shares using current price per share
+            feesInShares = (feesInAssets * totalSupply) / (totalAssets - feesInAssets);
+        }
+    }
+
+    /// @notice Validate management fee configuration
+    /// @param managementFeeRate The management fee rate in basis points
+    /// @param managementFeeRecipient The recipient address
+    /// @param enabled Whether management fees are enabled
+    function validateManagementFeeConfig(
+        uint256 managementFeeRate,
+        address managementFeeRecipient,
+        bool enabled
+    ) external pure {
+        if (managementFeeRate > MAX_BPS) {
+            revert ManagementFeeRateTooHigh();
+        }
+        if (enabled && managementFeeRecipient == address(0)) {
+            revert InvalidManagementFeeRecipient();
+        }
     }
 }

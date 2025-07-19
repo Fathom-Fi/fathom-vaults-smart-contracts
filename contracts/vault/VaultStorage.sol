@@ -38,8 +38,6 @@ contract VaultStorage is AccessControl, ReentrancyGuard {
     uint256 public totalIdle;
     /// @notice Minimum amount of assets that should be kept in the vault contract to allow for fast, cheap redeems.
     uint256 public minimumTotalIdle;
-    /// @notice Maximum amount of tokens that the vault can accept. If totalAssets > deposit_limit, deposits will revert.
-    uint256 public depositLimit;
 
     /// @notice The amount of time profits will unlock over.
     uint256 public profitMaxUnlockTime;
@@ -66,7 +64,7 @@ contract VaultStorage is AccessControl, ReentrancyGuard {
     ERC20 internal assetContract;
 
     /// @notice Should the vault use the default_queue regardless whats passed in.
-    bool public useDefaultQueue;
+
 
     /// @notice State of the vault - if set to true, only withdrawals will be available. It can't be reverted.
     bool public shutdown;
@@ -96,5 +94,6 @@ contract VaultStorage is AccessControl, ReentrancyGuard {
     /// @notice EIP-2612 permit() nonces
     mapping(address => uint256) public nonces;
 
-    uint256 public minUserDeposit;
+    /// @notice Management fee configuration
+    ManagementFeeConfig public managementFeeConfig;
 }

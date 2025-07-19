@@ -20,10 +20,8 @@ interface IVaultEvents {
 
     event UpdatedAccountant(address accountant);
     event UpdatedDefaultQueue(address[] newDefaultQueue);
-    event UpdatedUseDefaultQueue(bool useDefaultQueue);
+
     event UpdatedMaxDebtForStrategy(address indexed sender, address indexed strategy, uint256 newDebt);
-    event UpdatedDepositLimit(uint256 depositLimit);
-    event UpdatedMinUserDeposit(uint256 minUserDeposit);
     event UpdatedMinimumTotalIdle(uint256 minimumTotalIdle);
     event UpdatedProfitMaxUnlockTime(uint256 profitMaxUnlockTime);
     event DebtPurchased(address indexed strategy, uint256 amount);
@@ -33,4 +31,8 @@ interface IVaultEvents {
     event UpdatedWithdrawLimitModule(address withdrawLimitModule);
     
     event StrategyAdded(address indexed strategy, bytes4 indexed interfaceId, bytes data);
+
+    // Management fee events
+    event ManagementFeeConfigUpdated(uint256 managementFeeRate, address managementFeeRecipient, bool enabled);
+    event ManagementFeesCollected(uint256 feeAmount, uint256 sharesIssued, address recipient);
 }

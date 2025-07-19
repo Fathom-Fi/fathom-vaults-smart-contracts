@@ -130,7 +130,6 @@ describe("Debt Management", function () {
     it("should update debt when current debt is less than new debt", async function () {
         const { vault, owner, asset, factory } = await loadFixture(deployVault);
         const amount = 1000;
-        await vault.setDepositLimit(amount);
         const strategy = await createStrategy(owner, vault, profitMaxUnlockTime, factory.target);
         const strategyParams = await addStrategyToVault(owner, strategy, vault);
         await userDeposit(owner, vault, asset, amount);
@@ -165,7 +164,6 @@ describe("Debt Management", function () {
         const amount = 1000;
         const maxDebt = 10000;
         const debt = 100;
-        await vault.setDepositLimit(amount);
         const strategy = await createStrategy(owner, vault, profitMaxUnlockTime, factory.target);
         const strategyParams = await addStrategyToVault(owner, strategy, vault);
         await userDeposit(owner, vault, asset, amount);
@@ -182,7 +180,6 @@ describe("Debt Management", function () {
         const maxDebt = 10000;
         const newDebt = 100;
         const DAYS_IN_SECONDS = 86400;
-        await vault.setDepositLimit(amount);
 
         const LockedStrategy = await ethers.getContractFactory("LockedStrategy");
         const lockedStrategy = await LockedStrategy.deploy(vault.target, await vault.asset(), { gasLimit: "0x1000000" });
@@ -208,7 +205,6 @@ describe("Debt Management", function () {
         const newDebt = 100;
         const DAYS_IN_SECONDS = 86400;
         const loss = 100; // 10% loss
-        await vault.setDepositLimit(amount);
 
         const LossyStrategy = await ethers.getContractFactory("LossyStrategy");
         const lossyStrategy = await LossyStrategy.deploy(await vault.asset(), "Lossy Strategy", owner.address, owner.address, vault.target, profitMaxUnlockTime, factory.target);
@@ -231,7 +227,6 @@ describe("Debt Management", function () {
         const newDebt = 100;
         const difference = currentDebt - lockedDebt; // maximum we can withdraw
         const DAYS_IN_SECONDS = 86400;
-        await vault.setDepositLimit(amount);
         await userDeposit(owner, vault, asset, amount);
         const vaultBalanceBefore = await asset.balanceOf(vault.target);
 
@@ -268,7 +263,6 @@ describe("Debt Management", function () {
         const maxDebt = 10000;
         const newDebt = 100;
         const difference = currentDebt - newDebt; // maximum we can withdraw
-        await vault.setDepositLimit(amount);
         const strategy = await createStrategy(owner, vault, profitMaxUnlockTime, factory.target);
         const strategyParams = await addStrategyToVault(owner, strategy, vault);
         await userDeposit(owner, vault, asset, amount);
@@ -300,7 +294,6 @@ describe("Debt Management", function () {
         const maxDesiredDebt = maxDebt / 2;
         const currentDebt = 1000;
         const difference = maxDesiredDebt - currentDebt; // maximum we can withdraw
-        await vault.setDepositLimit(maxDebt);
         const strategy = await createStrategy(owner, vault, profitMaxUnlockTime, factory.target);
         const strategyParams = await addStrategyToVault(owner, strategy, vault);
         

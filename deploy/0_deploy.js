@@ -10,9 +10,20 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         log: true,
     });
 
+    // Deploy VaultLogic library
+    const vaultLogic = await deploy("VaultLogic", {
+        from: deployer,
+        args: [],
+        log: true,
+    });
+
+    // Deploy VaultPackage with linked libraries
     await deploy("VaultPackage", {
         from: deployer,
         args: [],
+        libraries: {
+            VaultLogic: vaultLogic.address,
+        },
         log: true,
     });
 

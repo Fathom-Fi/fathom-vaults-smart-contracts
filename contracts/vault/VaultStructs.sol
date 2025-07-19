@@ -21,6 +21,14 @@ struct ShareManagement {
     uint256 sharesToBurn;
     uint256 accountantFeesShares;
     uint256 protocolFeesShares;
+    uint256 managementFeesShares;
+}
+
+struct ManagementFeeConfig {
+    uint256 managementFeeRate; // Annual management fee rate in basis points (e.g., 200 = 2%)
+    address managementFeeRecipient; // Address to receive management fees
+    uint256 lastManagementFeeCollection; // Timestamp of last management fee collection
+    bool managementFeeEnabled; // Whether management fees are enabled
 }
 
 struct WithdrawalState {
