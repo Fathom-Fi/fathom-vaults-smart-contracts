@@ -14,7 +14,7 @@ module.exports = {
         settings: {
             optimizer: {
                 enabled: true,
-                runs: 200,
+                runs: 1,
                 details: { yul: true },
             },
             viaIR: true,
@@ -24,19 +24,35 @@ module.exports = {
         apothem: {
             url: `https://earpc.apothem.network`,
             // url: 'https://erpc.apothem.network',
-            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
+            accounts: process.env.PRIVATE_KEY
+                ? [process.env.PRIVATE_KEY]
+                : DEFAULT_PK
+                  ? [DEFAULT_PK]
+                  : [],
         },
         xdc: {
             url: `https://erpc.xdcrpc.com`,
-            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
+            accounts: process.env.PRIVATE_KEY
+                ? [process.env.PRIVATE_KEY]
+                : DEFAULT_PK
+                  ? [DEFAULT_PK]
+                  : [],
         },
         ganache: {
             url: `http://127.0.0.1:8545`,
-            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
+            accounts: process.env.PRIVATE_KEY
+                ? [process.env.PRIVATE_KEY]
+                : DEFAULT_PK
+                  ? [DEFAULT_PK]
+                  : [],
         },
         localhost: {
             url: `http://127.0.0.1:8545`,
-            accounts: DEFAULT_PK ? [DEFAULT_PK] : [],
+            accounts: process.env.PRIVATE_KEY
+                ? [process.env.PRIVATE_KEY]
+                : DEFAULT_PK
+                  ? [DEFAULT_PK]
+                  : [],
         },
         // hardhat: {
         //     accounts: {

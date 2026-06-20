@@ -33,6 +33,14 @@ interface IVault is IERC4626 {
 
     function shutdownVault() external;
 
+    /// @notice Wind-down: redeem all of `owner`'s shares; FXD sent to `owner`.
+    /// @dev Cannot be deployed in the same impl as `adminSweepResidualAsset` (24 KB limit).
+    function adminForceRedeem(address owner, uint256 maxLoss, address[] calldata strategies) external returns (uint256);
+
+    /// @notice Wind-down: send untracked vault FXD (`balance - totalIdle`) to `receiver`.
+    /// @dev Cannot be deployed in the same impl as `adminForceRedeem` (24 KB limit).
+    function adminSweepResidualAsset(address receiver) external returns (uint256);
+
     function processReport(address strategy) external returns (uint256, uint256);
 
     function updateDebt(address strategy, uint256 targetDebt) external returns (uint256);
