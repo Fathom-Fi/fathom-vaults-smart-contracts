@@ -257,6 +257,63 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
         emit Shutdown();
     }
 
+    // -------------------------------------------------------------------------
+    // Wind-down admin helpers (post-shutdown only)
+    //
+    // BOTH functions are kept in source for audit and operator scripts.
+    // They CANNOT be deployed in the same VaultPackage implementation: combined
+    // deployed bytecode exceeds the 24 KB limit (EIP-170) even with optimizer
+    // runs = 1 (~24,598 bytes vs 24,576 max as of Jun 2026).
+    //
+    // Mainnet used two upgrades:
+    //   1) adminForceRedeem only  → redeem all share holders
+    //   2) adminSweepResidualAsset only → sweep FXD.balanceOf(vault) - totalIdle
+    //
+    // To deploy: comment out the function not needed for that upgrade, compile,
+    // deploy VaultPackage, upgrade proxies, then restore source for git.
+    // -------------------------------------------------------------------------
+
+    /// @notice Redeem a user's full share balance during wind-down.
+    /// @dev Callable only after `shutdownVault()`. FXD is sent to `owner`.
+    function adminForceRedeem(
+        address owner,
+        uint256 maxLoss,
+        address[] calldata _strategies
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) nonReentrant returns (uint256 assets) {
+        if (!shutdown) revert VaultNotShutdown();
+        if (owner == address(0)) revert ZeroAddress();
+
+        uint256 sharesToBurn = sharesBalanceOf[owner];
+        if (sharesToBurn == 0) revert ZeroValue();
+
+        assets = VaultLogic.convertToAssets(sharesToBurn, _totalSupply(), _totalAssets(), Rounding.ROUND_DOWN);
+
+        VaultLogic.validateRedeem(owner, sharesToBurn, maxLoss, MAX_BPS, sharesBalanceOf[owner]);
+        uint256 maxWithdrawAmount = _maxWithdraw(owner, maxLoss, _strategies);
+        if (assets > maxWithdrawAmount) {
+            assets = maxWithdrawAmount;
+        }
+
+        (uint256 requestedAssets, uint256 currTotalIdle) = _withdrawAssets(assets, _strategies);
+        _finalizeRedeem(owner, owner, sharesToBurn, assets, requestedAssets, currTotalIdle, maxLoss);
+
+        emit Withdraw(msg.sender, owner, owner, requestedAssets, sharesToBurn);
+        return requestedAssets;
+    }
+
+    /// @notice Transfer FXD not accounted for in `totalIdle` (orphan balance after redemptions).
+    function adminSweepResidualAsset(
+        address receiver
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256 amount) {
+        if (!shutdown) revert VaultNotShutdown();
+        if (receiver == address(0)) revert ZeroAddress();
+        uint256 balance = assetContract.balanceOf(address(this));
+        if (balance <= totalIdle) revert ZeroValue();
+        amount = balance - totalIdle;
+        totalIdle = 0;
+        _erc20SafeTransfer(address(assetContract), receiver, amount);
+    }
+
     /// @notice Process the report of a strategy.
     /// @dev Processing a report means comparing the debt that the strategy has taken
     /// with the current amount of funds it is reporting. If the strategy owes

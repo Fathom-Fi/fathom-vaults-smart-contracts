@@ -41,3 +41,4 @@ error UsingModule();
 error SameAccountant();
 error NonCompliantDeposit();
 error MinDepositNotReached();
+error VaultNotShutdown();
