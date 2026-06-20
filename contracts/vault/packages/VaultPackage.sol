@@ -257,6 +257,48 @@ contract VaultPackage is VaultStorage, IVault, IVaultInit, IVaultEvents {
         emit Shutdown();
     }
 
+    /// @notice Redeem a user's full share balance during wind-down.
+    /// @dev Callable only after `shutdownVault()`. FXD is always sent to `owner`; there is no
+    ///      `receiver` parameter, so funds cannot be directed to a different address.
+    /// @param owner Share holder whose entire balance is burned.
+    /// @param maxLoss Max acceptable loss in basis points (use 0 for strict).
+    /// @param _strategies Optional strategy queue for idle liquidity (empty = default queue).
+    /// @return assets FXD transferred to `owner`.
+    function adminForceRedeem(
+        address owner,
+        uint256 maxLoss,
+        address[] calldata _strategies
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) nonReentrant returns (uint256 assets) {
+        if (!shutdown) {
+            revert VaultNotShutdown();
+        }
+        if (owner == address(0)) {
+            revert ZeroAddress();
+        }
+
+        uint256 sharesToBurn = sharesBalanceOf[owner];
+        if (sharesToBurn == 0) {
+            revert ZeroValue();
+        }
+
+        assets = VaultLogic.convertToAssets(sharesToBurn, _totalSupply(), _totalAssets(), Rounding.ROUND_DOWN);
+
+        VaultLogic.validateRedeem(owner, sharesToBurn, maxLoss, MAX_BPS, sharesBalanceOf[owner]);
+        uint256 maxWithdrawAmount = _maxWithdraw(owner, maxLoss, _strategies);
+        if (assets > maxWithdrawAmount) {
+            revert ExceedWithdrawLimit(maxWithdrawAmount);
+        }
+
+        // Full exit: no MinDepositNotReached check when burning entire balance.
+        // Skips _handleAllowance — admin may redeem without user approval during shutdown.
+
+        (uint256 requestedAssets, uint256 currTotalIdle) = _withdrawAssets(assets, _strategies);
+        _finalizeRedeem(owner, owner, sharesToBurn, assets, requestedAssets, currTotalIdle, maxLoss);
+
+        emit Withdraw(msg.sender, owner, owner, requestedAssets, sharesToBurn);
+        return requestedAssets;
+    }
+
     /// @notice Process the report of a strategy.
     /// @dev Processing a report means comparing the debt that the strategy has taken
     /// with the current amount of funds it is reporting. If the strategy owes

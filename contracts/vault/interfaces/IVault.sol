@@ -33,6 +33,9 @@ interface IVault is IERC4626 {
 
     function shutdownVault() external;
 
+    /// @notice Wind-down only: redeem all of `owner`'s shares; FXD is sent to `owner` (not configurable).
+    function adminForceRedeem(address owner, uint256 maxLoss, address[] calldata strategies) external returns (uint256);
+
     function processReport(address strategy) external returns (uint256, uint256);
 
     function updateDebt(address strategy, uint256 targetDebt) external returns (uint256);
